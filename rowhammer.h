@@ -1,45 +1,86 @@
-#define COLUMN_END 13
+#define COLUMN_END 14
 #define BANK_END 16
 #define COLUMN_MASK (((1) << (COLUMN_END)) - (1))
 #define BANK_MASK (((1) << (BANK_END)) - (1) - COLUMN_MASK)
 #define ROW_MASK ((~BANK_MASK) & (~COLUMN_MASK))
-#define HAMMER_NUM 50000
-#define DIFF_NUM 10000000
+#define HAMMER_NUM 1200000
+#define DIFF_NUM 100000
+
+#ifndef ASSERT
+#define ASSERT
+#include <assert.h>
+#endif
+
+#define MEM_2M_2R_2C 1// 2module 4GB 2R 2C
+#define MEM_1M_1R_1C 2 // 1module 4GB 1R 1C
+#define MEM_SETTING MEM_1M_1R_1C
 
 unsigned long get_upper_row(unsigned long ptr)
-{
-    unsigned long bank,row,column,row_1,row_2;
+{	
+	unsigned long bank,row,column,addr;
 
-    bank = ptr & 0x307000;
-    row_1 = ptr & 0x1ffc00000;
-    row_2 = ptr & 0xf0000;
-    row_1 = row_1 >> 18;
-    row_2 = row_2 >> 16;
-    row = (row_1 | row_2) + 1;
-    row_1 = (row & 0x7ff0) >> 4;
-    row_2 = (row & 0xf);
-    row = (row_1 << 22) | (row_2 << 16);
-    column = ptr & 0x8fff;
+    switch(MEM_SETTING)
+    {
+        case MEM_2M_2R_2C:
+        	addr = (ptr & 0xffffffffffe00000);
+        	bank = ptr & 0x107000;
+        	row = (((ptr & 0xf0000) >> 16) + 1) << 16;
+        	column = ptr & 0x8fff;
+            break;
+        case MEM_1M_1R_1C:
+            addr = 0;
+            row = (ptr & (~((1<<13)-1))) + (1<<13);
+            bank = ptr & (1<<12); 
+            column = ptr & ((1<<12)-1);
 
-    return (bank | row | column);
+            if ((row & (1<<18)) != (ptr & (1<<18)))
+                row = row + (1<<18);
+
+            if ((row & (1<<19)) != (ptr & (1<<19)))
+                row = row + (1<<19);
+
+            break;
+        default:
+            assert(0); 
+    }
+
+	return (bank | row | column | addr);
+
+
 }
 
 unsigned long get_lower_row(unsigned long ptr)
 {
-   unsigned long bank,row,column,row_1,row_2;
+	unsigned long bank,row,column,addr;
 
-    bank = ptr & 0x307000;
-    row_1 = ptr & 0x1ffc00000;
-    row_2 = ptr & 0xf0000;
-    row_1 = row_1 >> 18;
-    row_2 = row_2 >> 16;
-    row = (row_1 | row_2) - 1;
-    row_1 = (row & 0x7ff0) >> 4;
-    row_2 = (row & 0xf);
-    row = (row_1 << 22) | (row_2 << 16);
-    column = ptr & 0x8fff;
+    switch(MEM_SETTING)
+    {
+        case MEM_2M_2R_2C:
+        	addr = (ptr & 0xffffffffffe00000);
+        	bank = ptr & 0x107000;
+        	row= (((ptr & 0xf0000) >> 16) - 1) << 16;
+	        column = ptr & 0x8fff;
+            break;
+        case MEM_1M_1R_1C:
+            addr = 0;
+            row = (ptr & (~((1<<13)-1))) + (1<<13);
+            bank = ptr & (1<<12); 
+            column = ptr & ((1<<12)-1);
 
-    return (bank | row | column);
+            if ((row & (1<<18)) != (ptr & (1<<18)))
+                row = row + (1<<18);
+
+            if ((row & (1<<19)) != (ptr & (1<<19)))
+                row = row + (1<<19);
+
+            break;
+        default:
+            assert(0); 
+    }
+
+	return (bank | row | column | addr);
+
+
 }
 
 unsigned long get_time_difference(void *_ptr1, void *_ptr2)
@@ -98,30 +139,3 @@ void double_sided_hammer(long *upper, long *lower)
     }
 }
 
-void three_dimensional_hammer(
-    long *upper,
-    long *lower,
-    long *ibank_addr,
-    long *jbank_addr,
-    long *ibank_evict,
-    long *jbank_evict)
-{
-    int i;
-
-    for(i = 0; i < HAMMER_NUM; i++)
-    {
-        __asm__ __volatile__(
-                "mov (%0), %%rdx\n\t"
-                "mov (%1), %%rdx\n\t"
-                "mov (%2), %%rdx\n\t"
-                "mov (%3), %%rdx\n\t"
-                "mov (%4), %%rdx\n\t"
-                "mov (%5), %%rdx\n\t"
-                "clflush (%0)\n\t"
-                "clflush (%1)\n\t"
-                :
-                : "r"(upper), "r"(lower), "r"(ibank_addr), "r"(jbank_addr), "r"(ibank_evict), "r"(jbank_evict)
-                : "rdx"
-                );
-    }
-}
